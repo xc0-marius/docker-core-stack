@@ -1,26 +1,55 @@
 #!/bin/bash
 set -e
 
-# Ensure we are operating in the correct directory
-cd /opt/core-stack
+# Docker Core Stack - Robust Start Script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-echo "Creating shared Docker networks..."
+echo "🚀 Starting Docker Core Stack from $SCRIPT_DIR"
+
+# Create shared networks
+echo "🌐 Creating shared Docker networks..."
 docker network create proxy_net 2>/dev/null || true
 docker network create db_net 2>/dev/null || true
 
-echo "Starting 01-proxy (Traefik)..."
-cd 01-proxy && docker compose --env-file ../.env up -d --wait && cd ..
+# Stack startup in dependency order
+declare -a stacks=(
+    "01-proxy"
+    "02-database" 
+    "03-auth"
+    "04-management"
+    "05-vpn"
+)
 
-echo "Starting 02-database (PostgreSQL + Redis)..."
-cd 02-database && docker compose --env-file ../.env up -d --wait && cd ..
+for stack in "${stacks[@]}"; do
+    if [ ! -d "$stack" ]; then
+        echo "❌ ERROR: $stack directory not found!"
+        exit 1
+    fi
+    
+    if [ ! -f "$stack/docker-compose.yml" ]; then
+        echo "❌ ERROR: $stack/docker-compose.yml not found!"
+        exit 1
+    fi
+    
+    echo "⬆️  Starting $stack..."
+    pushd "$stack" > /dev/null
+    if docker compose --env-file ../.env up -d --wait; then
+        echo "✅ $stack healthy"
+    else
+        echo "❌ $stack failed to start"
+        popd > /dev/null
+        exit 1
+    fi
+    popd > /dev/null
+done
 
-echo "Starting 03-auth (Authentik)..."
-cd 03-auth && docker compose --env-file ../.env up -d --wait && cd ..
-
-echo "Starting 04-management (Dockhand + pgAdmin)..."
-cd 04-management && docker compose --env-file ../.env up -d --wait && cd ..
-
-echo "Starting 05-vpn (Netbird)..."
-cd 05-vpn && docker compose --env-file ../.env up -d --wait && cd ..
-
-echo "All stacks have been successfully initialized using the .env configuration!"
+echo ""
+echo "🎉 All stacks started successfully!"
+echo "📋 Check status: docker ps"
+echo "🌐 Access:"
+echo "  Traefik: https://traefik.ktown.gg"
+echo "  pgAdmin: https://pgadmin.ktown.gg"
+echo "  Authentik: https://auth.ktown.gg"
+echo "  Dockhand: https://dockhand.ktown.gg"
+echo "  Netbird: https://netbird.ktown.gg"

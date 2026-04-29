@@ -37,7 +37,7 @@ services:
       - "--ping.entrypoint=web"
       
       # Logging
-      - "--log.level=INFO"
+      - "--log.level=DEBUG"
     environment:
       DESEC_TOKEN: ${DESEC_TOKEN}
     ports:

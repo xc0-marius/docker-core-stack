@@ -4,25 +4,44 @@ networks:
 
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3
     container_name: traefik
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     command:
+      # API & Dashboard
       - "--api.dashboard=true"
+      
+      # Provider config
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=proxy_net"
+      
+      # Entry points
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
       - "--entrypoints.websecure.address=:443"
+      
+      # Let's Encrypt deSEC DNS Challenge
       - "--certificatesresolvers.desec.acme.dnschallenge=true"
       - "--certificatesresolvers.desec.acme.dnschallenge.provider=desec"
+      - "--certificatesresolvers.desec.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53"
+      - "--certificatesresolvers.desec.acme.dnschallenge.delaybeforecheck=60"
       - "--certificatesresolvers.desec.acme.email=${ACME_EMAIL}"
       - "--certificatesresolvers.desec.acme.storage=/letsencrypt/acme.json"
-      - "--ping=true"
+      
+      # Ping endpoint (CRITICAL for healthcheck)
+      - "--ping"
+      - "--ping.entrypoint=web"
+      
+      # Logging
+      - "--log.level=INFO"
     environment:
-      - DESEC_TOKEN=${DESEC_TOKEN}
+      DESEC_TOKEN: ${DESEC_TOKEN}
     ports:
+      - "8080:8080"
       - "80:80"
       - "443:443"
     volumes:
@@ -31,11 +50,9 @@ services:
     networks:
       - proxy_net
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+      test: ["NONE"]
     labels:
+      # Traefik Dashboard
       - "traefik.enable=true"
       - "traefik.http.routers.traefik.rule=Host(`traefik.${DOMAIN}`)"
       - "traefik.http.routers.traefik.service=api@internal"

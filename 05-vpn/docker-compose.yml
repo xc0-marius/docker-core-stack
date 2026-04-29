@@ -1,65 +1,65 @@
-networks:
-  proxy_net:
-    external: true
-
 services:
-  netbird-dashboard:
+  # UI dashboard
+  dashboard:
     image: netbirdio/dashboard:latest
     container_name: netbird-dashboard
     restart: unless-stopped
-    environment:
-      - NETBIRD_MGMT_API_ENDPOINT=https://netbird.${DOMAIN}
-      - NETBIRD_MGMT_GRPC_API_ENDPOINT=https://netbird.${DOMAIN}
-      - AUTH_AUTHORITY=https://auth.${DOMAIN}/application/o/netbird/
-      - AUTH_CLIENT_ID=netbird
-      - AUTH_SUPPORTED_SCOPES=openid profile email
-    networks:
-      - proxy_net
+    networks: [proxy_net]
+    env_file:
+      - ./dashboard.env
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.nb-dashboard.rule=Host(`netbird.${DOMAIN}`)"
-      - "traefik.http.routers.nb-dashboard.entrypoints=websecure"
-      - "traefik.http.routers.nb-dashboard.tls.certresolver=desec"
-      - "traefik.http.services.nb-dashboard.loadbalancer.server.port=80"
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+      - traefik.enable=true
+      - traefik.http.routers.netbird-dashboard.rule=Host(`netbird.ktown.gg`)
+      - traefik.http.routers.netbird-dashboard.entrypoints=websecure
+      - traefik.http.routers.netbird-dashboard.tls=true
+      - traefik.http.routers.netbird-dashboard.tls.certresolver=desec
+      - traefik.http.routers.netbird-dashboard.priority=1
+      - traefik.http.services.netbird-dashboard.loadbalancer.server.port=80
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "500m"
+        max-file: "2"
 
-  netbird-management:
-    image: netbirdio/management:latest
-    container_name: netbird-management
+  # Combined server (Management + Signal + Relay + STUN)
+  netbird-server:
+    image: netbirdio/netbird-server:latest
+    container_name: netbird-server
     restart: unless-stopped
-    environment:
-      - NETBIRD_STORE_ENGINE_POSTGRES_DSN=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@global-postgres:5432/netbird
+    networks: [proxy_net]
+    ports:
+      - '3478:3478/udp'
     volumes:
-      - netbird-mgmt:/var/lib/netbird
-    networks:
-      - proxy_net
+      - netbird_data:/var/lib/netbird
+      - ./config.yaml:/etc/netbird/config.yaml
+    command: ["--config", "/etc/netbird/config.yaml"]
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.nb-mgmt.rule=Host(`netbird.${DOMAIN}`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.nb-mgmt.entrypoints=websecure"
-      - "traefik.http.routers.nb-mgmt.tls.certresolver=desec"
-      - "traefik.http.services.nb-mgmt.loadbalancer.server.port=33073"
-
-  netbird-signal:
-    image: netbirdio/signal:latest
-    container_name: netbird-signal
-    restart: unless-stopped
-    volumes:
-      - netbird-signal:/var/lib/netbird
-    networks:
-      - proxy_net
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.nb-signal.rule=Host(`netbird.${DOMAIN}`) && PathPrefix(`/signalexchange.SignalExchange/`)"
-      - "traefik.http.routers.nb-signal.entrypoints=websecure"
-      - "traefik.http.routers.nb-signal.tls.certresolver=desec"
-      - "traefik.http.services.nb-signal.loadbalancer.server.port=10000"
-      - "traefik.http.services.nb-signal.loadbalancer.server.scheme=h2c"
+      - traefik.enable=true
+      # gRPC router (needs h2c backend for HTTP/2 cleartext)
+      - traefik.http.routers.netbird-grpc.rule=Host(`netbird.ktown.gg`) && (PathPrefix(`/signalexchange.SignalExchange/`) || PathPrefix(`/management.ManagementService/`))
+      - traefik.http.routers.netbird-grpc.entrypoints=websecure
+      - traefik.http.routers.netbird-grpc.tls=true
+      - traefik.http.routers.netbird-grpc.tls.certresolver=desec
+      - traefik.http.routers.netbird-grpc.service=netbird-server-h2c
+      # Backend router (relay, WebSocket, API, OAuth2)
+      - traefik.http.routers.netbird-backend.rule=Host(`netbird.ktown.gg`) && (PathPrefix(`/relay`) || PathPrefix(`/ws-proxy/`) || PathPrefix(`/api`) || PathPrefix(`/oauth2`))
+      - traefik.http.routers.netbird-backend.entrypoints=websecure
+      - traefik.http.routers.netbird-backend.tls=true
+      - traefik.http.routers.netbird-backend.tls.certresolver=desec
+      - traefik.http.routers.netbird-backend.service=netbird-server
+      # Services
+      - traefik.http.services.netbird-server.loadbalancer.server.port=80
+      - traefik.http.services.netbird-server-h2c.loadbalancer.server.port=80
+      - traefik.http.services.netbird-server-h2c.loadbalancer.server.scheme=h2c
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "500m"
+        max-file: "2"
 
 volumes:
-  netbird-mgmt:
-  netbird-signal:
+  netbird_data:
+
+networks:
+  proxy_net:
+    external: true

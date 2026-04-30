@@ -1,0 +1,33 @@
+server:
+  listenAddress: ":80"
+  exposedAddress: "https://netbird.ktown.gg"
+  authSecret: "HJDhfspfFr/TgXP6uGuhEpD2TIc4xZrQ2axpnq625fY"
+  dataDir: "/var/lib/netbird"
+  stunPorts: 3478
+  metricsPort: 9090
+  healthcheckAddress: ":9000"
+  logLevel: "info"
+
+auth:
+  issuer: "https://netbird.ktown.gg/oauth2"
+  signKeyRefreshEnabled: true
+  dashboardRedirectURIs:
+    - "https://netbird.ktown.gg/nb-auth"
+    - "https://netbird.ktown.gg/nb-silent-auth"
+  cliRedirectURIs:
+    - "http://localhost:53000/"
+  embeddedIDP:
+    enabled: true
+
+reverseProxy:
+  trustedHTTPProxies:
+    - "172.18.0.0/16"
+    - "172.30.0.10/32"
+
+store:
+  engine: "sqlite"
+  encryptionKey: "pV8FtftJyeRrQZNyDTBWnI6pzxSICEivxM4KuiTYB8c="
+
+trustedPeers:
+  - "0.0.0.0/0"
+  - "::/0"
